@@ -2,12 +2,14 @@ import { useState, useRef } from "react";
 import {
   MessageCircle,
   AlertCircle,
-  CheckCircle,
   Upload,
   X,
   FileImage,
 } from "lucide-react";
 import { z } from "zod";
+
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const experienceLevels = [
   { value: "beginner", label: "Beginner" },
@@ -21,13 +23,19 @@ const idTypes = [
   { value: "photo_id", label: "Photo ID Card" },
 ];
 
+/* ✅ UPDATED VALIDATION */
 const formSchema = z.object({
-  fullName: z.string().min(2),
-  email: z.string().email(),
-  mobile: z.string().min(10),
-  investmentAmount: z.string().min(1),
-  experience: z.string().min(1),
-  idType: z.string().min(1),
+  fullName: z.string().min(2, "Name is required"),
+  email: z.string().email("Invalid email"),
+  mobile: z.string().min(10, "Mobile number required"),
+
+  investmentAmount: z
+    .coerce
+    .number()
+    .min(1000, "Minimum investment amount is 1000 CAD"),
+
+  experience: z.string().min(1, "Select experience"),
+  idType: z.string().min(1, "Select ID type"),
 });
 
 const InvestmentForm = () => {
@@ -41,15 +49,14 @@ const InvestmentForm = () => {
   });
 
   const [idFile, setIdFile] = useState(null);
-  const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const fileInputRef = useRef(null);
 
-  /* ------------------ HANDLERS (same UI) ------------------ */
+  /* ------------------ HANDLERS ------------------ */
 
   const handleChange = (e) => {
     setFormData((p) => ({ ...p, [e.target.name]: e.target.value }));
-    setErrors((p) => ({ ...p, [e.target.name]: "" }));
   };
 
   const handleFileChange = (e) => {
@@ -57,17 +64,16 @@ const InvestmentForm = () => {
     if (!file) return;
 
     if (!["image/jpeg", "image/png", "image/jpg"].includes(file.type)) {
-      setErrors({ idFile: "Please upload a JPG or PNG image" });
+      toast.error("Please upload JPG or PNG image");
       return;
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      setErrors({ idFile: "File size must be under 10MB" });
+      toast.error("File size must be under 10MB");
       return;
     }
 
     setIdFile(file);
-    setErrors({});
   };
 
   const removeFile = () => {
@@ -75,12 +81,12 @@ const InvestmentForm = () => {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  /* ------------------ CLOUDINARY (NEW) ------------------ */
+  /* ------------------ CLOUDINARY ------------------ */
 
   const uploadToCloudinary = async () => {
     const data = new FormData();
     data.append("file", idFile);
-    data.append("upload_preset", "crypto"); // ✅ preset
+    data.append("upload_preset", "crypto");
 
     const res = await fetch(
       "https://api.cloudinary.com/v1_1/dcotvv2ek/image/upload",
@@ -102,23 +108,20 @@ const InvestmentForm = () => {
 
     const parsed = formSchema.safeParse(formData);
     if (!parsed.success) {
-      const errs = {};
-      parsed.error.errors.forEach((er) => {
-        errs[er.path[0]] = er.message;
+      parsed.error.errors.forEach((err) => {
+        toast.error(err.message);
       });
-      setErrors(errs);
       return;
     }
 
     if (!idFile) {
-      setErrors({ idFile: "Please upload your ID document" });
+      toast.error("Please upload your ID document");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // 🔥 Upload image first
       const imageUrl = await uploadToCloudinary();
 
       const experienceLabel =
@@ -126,7 +129,6 @@ const InvestmentForm = () => {
       const idTypeLabel =
         idTypes.find((i) => i.value === formData.idType)?.label;
 
-      // 🔥 SAME WhatsApp flow, just link added
       const message = `
 Hi, I'm interested in crypto investment.
 
@@ -145,97 +147,127 @@ ${imageUrl}
 Please get in touch with me.
       `.trim();
 
-      window.open(
-        `https://wa.me/918512001218?text=${encodeURIComponent(message)}`,
-        "_blank"
+      toast.success(
+        "Form submitted successfully! Redirecting to WhatsApp..."
       );
+
+      setTimeout(() => {
+        window.open(
+          `https://wa.me/918512001218?text=${encodeURIComponent(message)}`,
+          "_blank"
+        );
+      }, 1500);
     } catch (err) {
-      setErrors({ idFile: "Image upload failed. Try again." });
+      toast.error("Image upload failed. Try again.");
     }
 
     setIsSubmitting(false);
   };
 
-  /* ------------------ UI (UNCHANGED) ------------------ */
+  /* ------------------ UI ------------------ */
 
   return (
-    <section id="invest" className="section-padding bg-secondary">
-      <div className="container-tight">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Start Your Investment Journey
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              Fill in your details below and connect with our investment experts.
-            </p>
-          </div>
+    <>
+      <ToastContainer position="top-right" autoClose={3000} />
 
-          <form onSubmit={handleSubmit} className="card-elevated space-y-6">
-            {/* ---- SAME DESIGN ---- */}
+      <section id="invest" className="section-padding bg-secondary">
+        <div className="container-tight">
+          <div className="max-w-2xl mx-auto">
+            <form onSubmit={handleSubmit} className="card-elevated space-y-6">
+              <input
+                name="fullName"
+                onChange={handleChange}
+                placeholder="Full Name"
+                className="w-full px-4 py-3 rounded-xl border"
+              />
 
-            <input name="fullName" onChange={handleChange} placeholder="Full Name" className="w-full px-4 py-3 rounded-xl border" />
-            <input name="email" onChange={handleChange} placeholder="Email" className="w-full px-4 py-3 rounded-xl border" />
-            <input name="mobile" onChange={handleChange} placeholder="Mobile" className="w-full px-4 py-3 rounded-xl border" />
-            <input name="investmentAmount" onChange={handleChange} placeholder="Investment Amount (CAD)" className="w-full px-4 py-3 rounded-xl border" />
+              <input
+                name="email"
+                onChange={handleChange}
+                placeholder="Email"
+                className="w-full px-4 py-3 rounded-xl border"
+              />
 
-            <select name="experience" onChange={handleChange} className="w-full px-4 py-3 rounded-xl border">
-              <option value="">Select Experience</option>
-              {experienceLevels.map((e) => (
-                <option key={e.value} value={e.value}>{e.label}</option>
-              ))}
-            </select>
+              <input
+                name="mobile"
+                onChange={handleChange}
+                placeholder="Mobile"
+                className="w-full px-4 py-3 rounded-xl border"
+              />
 
-            <select name="idType" onChange={handleChange} className="w-full px-4 py-3 rounded-xl border">
-              <option value="">Select ID Type</option>
-              {idTypes.map((i) => (
-                <option key={i.value} value={i.value}>{i.label}</option>
-              ))}
-            </select>
+              <input
+                name="investmentAmount"
+                type="number"
+                min="1000"
+                onChange={handleChange}
+                placeholder="Investment Amount (Min 1000 CAD)"
+                className="w-full px-4 py-3 rounded-xl border"
+              />
 
-            {formData.idType && (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full border-2 border-dashed rounded-xl p-6 text-center cursor-pointer"
+              <select
+                name="experience"
+                onChange={handleChange}
+                className="w-full px-4 py-3 rounded-xl border"
               >
-                {idFile ? (
-                  <div className="flex justify-center items-center gap-2">
-                    <FileImage className="w-5 h-5" />
-                    {idFile.name}
-                    <X onClick={removeFile} className="w-4 h-4 cursor-pointer" />
-                  </div>
-                ) : (
-                  <>
-                    <Upload className="mx-auto mb-2" />
-                    Click to upload your ID
-                  </>
-                )}
-                <input type="file" hidden ref={fileInputRef} onChange={handleFileChange} />
-              </div>
-            )}
+                <option value="">Select Experience</option>
+                {experienceLevels.map((e) => (
+                  <option key={e.value} value={e.value}>
+                    {e.label}
+                  </option>
+                ))}
+              </select>
 
-            {errors.idFile && (
-              <p className="text-sm text-destructive flex gap-1">
-                <AlertCircle className="w-4 h-4" /> {errors.idFile}
-              </p>
-            )}
+              <select
+                name="idType"
+                onChange={handleChange}
+                className="w-full px-4 py-3 rounded-xl border"
+              >
+                <option value="">Select ID Type</option>
+                {idTypes.map((i) => (
+                  <option key={i.value} value={i.value}>
+                    {i.label}
+                  </option>
+                ))}
+              </select>
 
-            <button
-              disabled={isSubmitting}
-              className="w-full bg-primary text-primary-foreground py-4 rounded-full font-semibold flex justify-center gap-2"
-            >
-              <MessageCircle className="w-5 h-5" />
-              {isSubmitting ? "Processing..." : "Submit & Chat on WhatsApp"}
-            </button>
+              {formData.idType && (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full border-2 border-dashed rounded-xl p-6 text-center cursor-pointer"
+                >
+                  {idFile ? (
+                    <div className="flex justify-center items-center gap-2">
+                      <FileImage className="w-5 h-5" />
+                      {idFile.name}
+                      <X onClick={removeFile} className="w-4 h-4 cursor-pointer" />
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className="mx-auto mb-2" />
+                      Click to upload your ID
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    hidden
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                  />
+                </div>
+              )}
 
-            <div className="flex items-start gap-2 text-sm text-muted-foreground">
-              <CheckCircle className="w-4 h-4 text-primary" />
-              Your information is secure and will only be used to contact you.
-            </div>
-          </form>
+              <button
+                disabled={isSubmitting}
+                className="w-full bg-primary text-primary-foreground py-4 rounded-full font-semibold flex justify-center gap-2"
+              >
+                <MessageCircle className="w-5 h-5" />
+                {isSubmitting ? "Processing..." : "Submit & Chat on WhatsApp"}
+              </button>
+            </form>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   );
 };
 
